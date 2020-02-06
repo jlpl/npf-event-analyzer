@@ -1,0 +1,96 @@
+NPF EVENT ANALYZER
+==================
+
+Calculate growth and formation rates for particles and ions.
+
+The methods are described in the paper 
+
+Kulmala, M., Petäjä, T., Nieminen, T. et al. 
+Measurement of the nucleation of atmospheric aerosol particles. 
+Nat Protoc 7, 1651–1667 (2012). 
+https://doi.org/10.1038/nprot.2012.091
+
+=====================
+
+Instructions to get started (assuming you have Anaconda installed):
+
+$ git clone https://github.com/jlpl/npf-event-analyzer.git
+$ cd npf-event-analyzer
+$ conda env create -f npf-event-analyzer.yml
+$ conda activate npf-event-analyzer
+$ touch analyze_particles_example.py
+
+    # analyze_particles_example.py
+
+    # Let's assume you have PSM, NAIS and DMPS data
+
+    from NpfEventAnalyzer import *
+    import numpy as np
+
+
+    ############################
+    # PREPARING THE PSM DATA
+    # psm[1:,0]   time vector (days)
+    # psm[0,:]    limiting diameters for size bins (nm)
+    # psm[1:,2:]  unnormalized particle number concentrations in each bin (cm-3)
+    #
+    psm = np.loadtxt('/path/to/psm-data.dat')
+    psm_time = psm[1:,0]
+    psm_diam = np.sqrt(psm[0,1:]*psm[0,:-1])
+    psm_data = psm[1:,1:]/np.abs(np.diff(np.log10(psm[0,:])))
+
+
+    ############################
+    # PREPARING THE NAIS DATA
+    # nais[1:,0]   time vector (days)
+    # nais[0,2:]   geometric mean diameters of size bins (m)
+    # nais[1:,2:]  normalized particle number concentrations in each bin (cm-3)
+    #
+    nais = np.loadtxt('/path/to/nais-data.sum')
+    nais_time = nais[1:,0]
+    nais_diam = nais[0,2:]*1e9
+    nais_data = nais[1:,2:]
+
+
+    ############################
+    # PREPARING THE DMPS DATA
+    # dmps[1:,0]   time vector (days)
+    # dmps[0,2:]   geometric mean diameters of size bins (nm)
+    # dmps[1:,2:]  normalized particle number concentrations in each bin (cm-3)
+    #
+    dmps = np.loadtxt('/path/to/dmps-data.sum')
+    dmps_time = dmps[1:,0]
+    dmps_diam = dmps[0,2:]
+    dmps_data = dmps[1:,2:]
+
+
+    ############################
+    # EXTRACT NON-OVERLAPPING SIZE-RANGES
+    # PSM: less than 2.5 nm
+    # NAIS: between 2.5 and 20 nm
+    # DMPS: larger than 20 nm
+    #
+    psm_findex = np.argwhere(psm_diam<2.5).flatten()                       
+    nais_findex = np.argwhere((nais_diam>2.5) & (nais_diam<20.0)).flatten()
+    dmps_findex = np.argwhere(dmps_diam>20.0).flatten()                    
+    psm_diam = psm_diam[psm_findex]
+    psm_data = psm_data[:,psm_findex]
+    nais_diam = nais_diam[nais_findex]
+    nais_data = nais_data[:,nais_findex]
+    dmps_diam = dmps_diam[dmps_findex]
+    dmps_data = dmps_data[:,dmps_findex]
+
+
+    ############################
+    # RUN THE NPF EVENT ANALYZER
+    #
+    eva = NpfEventAnalyzer()
+    particles = eva.combine_sizedist([psm_time,nais_time,dmps_time],
+                                     [psm_diam,nais_diam,dmps_diam],
+                                     [psm_data,nais_data,dmps_data],
+                                     1/1440.)
+    eva.analyze_par(particle_data, temp = 273.15, pres = 101325.0)
+
+$ python analyze_particles_example.py
+
+

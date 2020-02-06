@@ -1,0 +1,11 @@
+name: npf-event-analyzer
+channels:
+    - defaults
+    - conda-forge
+dependencies:
+    - python=3.6
+    - numpy
+    - matplotlib
+    - pandas
+    - ipython
+    - scipy
