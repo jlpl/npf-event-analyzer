@@ -85,10 +85,10 @@ $ touch analyze_particles_example.py
     # RUN THE NPF EVENT ANALYZER
     #
     eva = NpfEventAnalyzer()
-    particles = eva.combine_sizedist([psm_time,nais_time,dmps_time],
-                                     [psm_diam,nais_diam,dmps_diam],
-                                     [psm_data,nais_data,dmps_data],
-                                     1/1440.)
+    particle_data = eva.combine_sizedist([psm_time,nais_time,dmps_time],
+                                         [psm_diam,nais_diam,dmps_diam],
+                                         [psm_data,nais_data,dmps_data],
+                                         1/1440.)
     eva.analyze_par(particle_data, temp = 273.15, pres = 101325.0)
 
 $ python analyze_particles_example.py
