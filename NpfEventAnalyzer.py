@@ -473,7 +473,10 @@ class NpfEventAnalyzer:
             
             # Smoothed data
             self.smoothed_par_data = gaussian_filter(self.par_data,self.smooth,mode='constant')
-            
+           
+            # clean the pcolormesh plot
+            self.pcplot.set_array(np.nan*self.smoothed_par_data[:-1,:-1].ravel())
+
             # Color plot
             mesh_par_dp, mesh_par_time = np.meshgrid(self.par_diam,self.par_time)
             self.pcplot = self.ax1.pcolormesh(mesh_par_time,mesh_par_dp,self.smoothed_par_data,\
@@ -512,7 +515,9 @@ class NpfEventAnalyzer:
             self.smoothed_ion1_data = gaussian_filter(self.ion1_data,self.smooth,mode='constant')
             self.smoothed_ion2_data = gaussian_filter(self.ion2_data,self.smooth,mode='constant')
             self.smoothed_par_data = gaussian_filter(self.par_data,self.smooth,mode='constant')
-            
+           
+            self.pcplot.set_array(np.nan*self.smoothed_ion1_data[:-1,:-1].ravel())
+
             # Color plot
             mesh_ion1_dp, mesh_ion1_time = np.meshgrid(self.ion1_diam,self.ion1_time)
             self.pcplot = self.ax1.pcolormesh(mesh_ion1_time,mesh_ion1_dp,self.smoothed_ion1_data,\
