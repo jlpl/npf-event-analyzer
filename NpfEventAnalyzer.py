@@ -10,6 +10,8 @@ import itertools
 import pandas as pd
 from scipy.optimize import curve_fit
 
+plt.ion()
+
 class NpfEventAnalyzer:
     
     def __init__(self):
@@ -56,12 +58,12 @@ class NpfEventAnalyzer:
         par[1]: diameter vector, 1-D array, length m, unit nm
         par[2]: particle number-size distribution (dNdlogDp), 2-D array, n-by-m, unit cm-3 
 
-        temp[:,0] = time vector associated with the temperatures, unit days
-        temp[:,1] = temperatures in Kelvin
+        temp[0] = time vector associated with the temperatures, unit days
+        temp[1] = temperatures in Kelvin
         Also can be single float value, default 273.15 K
 
-        pres[:,0] = time vector associated with the pressures, unit days
-        pres[:,1] = pressure in Pascals
+        pres[0] = time vector associated with the pressures, unit days
+        pres[1] = pressure in Pascals
         Also can be single float value, default 101325.0 Pa
 
         """
@@ -109,12 +111,12 @@ class NpfEventAnalyzer:
         ion2[1]: diameter vector for the second ion polarity, 1-D array, nm
         ion2[2]: number-size distribution for the second ion polarity, 2-D array, cm-3
 
-        temp[:,0] = time vector associated with the temperatures, unit days
-        temp[:,1] = temperatures in Kelvin
+        temp[0] = time vector associated with the temperatures, unit days
+        temp[1] = temperatures in Kelvin
         also can be single float value, default 273.15 K
 
-        pres[:,0] = time vector associated with the pressures, unit days
-        pres[:,1] = pressure in Pascals
+        pres[0] = time vector associated with the pressures, unit days
+        pres[1] = pressure in Pascals
         also can be single float value, default 101325.0 Pa
 
         """
@@ -252,9 +254,9 @@ class NpfEventAnalyzer:
             self.temp_data = self.temp*np.ones((len(self.temp_time),1))
         # Temperature time series
         else:
-            self.temp_val = self.temp[:,1]
-            self.temp_tim = self.temp[:,0] - np.floor(self.temp[:,0])
-            self.temp_df = pd.DataFrame(index=self.temp_tim, data=self.temp_val)    
+            self.temp_val = self.temp[1]
+            self.temp_tim = self.temp[0] - np.floor(self.temp[0])
+            self.temp_df = pd.DataFrame(index=self.temp_tim, data=self.temp_val)
             self.temp_df = self.temp_df.reindex(self.time_axis,method='nearest')
             self.temp_data = self.temp_df.index.values
             self.temp_time = self.temp_df.values
@@ -263,8 +265,8 @@ class NpfEventAnalyzer:
             self.pres_time = self.time_axis
             self.pres_data = self.pres*np.ones((len(self.pres_time),1))
         else:
-            self.pres_val = self.pres[:,1]
-            self.pres_tim = self.pres[:,0] - np.floor(self.pres[:,0]) 
+            self.pres_val = self.pres[1]
+            self.pres_tim = self.pres[0] - np.floor(self.pres[0]) 
             self.pres_df = pd.DataFrame(index=self.pres_tim, data=self.pres_val)
             self.pres_df = self.pres_df.reindex(self.time_axis,method='nearest')
             self.pres_data = self.pres_df.index.values
@@ -280,6 +282,7 @@ class NpfEventAnalyzer:
         self.mmd_time_sr = \
         self.mmd_dp_sr = np.array([])
         self.J_peak = \
+        self.J_median = \
         self.gr = np.nan
         
     def __init_polygons(self):
@@ -330,8 +333,8 @@ class NpfEventAnalyzer:
         # Do the size range selection using slidesr instead of text boxes
         self.dp_axmin = self.fig.add_axes([0.5, 0.01, 0.2, 0.03])
         self.dp_axmax = self.fig.add_axes([0.5, 0.05, 0.2, 0.03])
-        self.dp_smin = Slider(self.dp_axmin,'dp min',1,20,valinit=self.dp_lim[0],valstep=0.5)
-        self.dp_smax = Slider(self.dp_axmax,'dp max',1,20,valinit=self.dp_lim[1],valstep=0.5)
+        self.dp_smin = Slider(self.dp_axmin,'dp min',1,50,valinit=self.dp_lim[0],valstep=0.5)
+        self.dp_smax = Slider(self.dp_axmax,'dp max',1,50,valinit=self.dp_lim[1],valstep=0.5)
         self.dp_smin.label.set_fontsize(self.fontsizes)
         self.dp_smax.label.set_fontsize(self.fontsizes)
         self.dp_smin.label.set_fontweight("bold")
@@ -421,6 +424,11 @@ class NpfEventAnalyzer:
         self.box_J_peak = TextBox(self.box_J_peak_ax,'J peak (cm-3 s-1)',initial = "%.2f" % self.J_peak)
         self.box_J_peak.label.set_fontsize(self.fontsizes)
         self.box_J_peak.label.set_fontweight("bold")
+       
+        self.box_J_median_ax = self.fig.add_axes([0.9, 0.07, 0.05, 0.02])
+        self.box_J_median = TextBox(self.box_J_median_ax,'J median (cm-3 s-1)',initial = "%.2f" % self.J_median)
+        self.box_J_median.label.set_fontsize(self.fontsizes)
+        self.box_J_median.label.set_fontweight("bold")
                       
         
     def __update_color(self,val):
@@ -432,17 +440,19 @@ class NpfEventAnalyzer:
         self.dp_lim = [self.dp_smin.val,self.dp_smax.val]
         self.J_bound_counter=0
         self.J_peak = np.nan
+        self.J_median = np.nan
         self.J_fit.set_data(np.nan,np.nan)
         self.J_lims = np.array([])
         self.J_vertical_line1.set_xdata(np.nan)
         self.J_vertical_line2.set_xdata(np.nan)
         plt.draw()
-        self.box_J_peak.set_val("%.2f" % self.J_peak) 
+        self.box_J_peak.set_val("%.2f" % self.J_peak)
+        self.box_J_median.set_val("%.2f" % self.J_median)
         self.__calc_gr()
         if self.particle_mode:
-            self.__calc_J()
+            self.calc_J()
         if self.ion_mode:
-            self.__calc_ion_J()
+            self.calc_ion_J()
         
     def __update_smooth(self,val):
         self.smooth = [self.smooth_smin.val,self.smooth_smax.val]
@@ -587,12 +597,14 @@ class NpfEventAnalyzer:
         if button_color=='lime':
             self.J_bound_counter=0
             self.J_peak = np.nan
+            self.J_median = np.nan
             self.J_fit.set_data(np.nan,np.nan)
             self.J_lims = np.array([])
             self.J_vertical_line1.set_xdata(np.nan)
             self.J_vertical_line2.set_xdata(np.nan)
             plt.draw()
             self.box_J_peak.set_val("%.2f" % self.J_peak) 
+            self.box_J_median.set_val("%.2f" % self.J_median) 
             self.cid_fit_J = self.fig.canvas.mpl_connect('button_press_event',self.__fit_J)
         elif button_color=='white':
             self.fig.canvas.mpl_disconnect(self.cid_fit_J)
@@ -632,24 +644,26 @@ class NpfEventAnalyzer:
     
                     except:
                         print ("Diverges")
+                    self.J_median = np.nanmedian(y)
     
                 elif self.J_bound_counter==2:
                     pass
                 
                 plt.draw()
                 self.box_J_peak.set_val("%.2f" % self.J_peak) 
+                self.box_J_median.set_val("%.2f" % self.J_median) 
                 
             if event.button==3:
                 self.J_bound_counter=0
                 self.J_peak = np.nan
+                self.J_median = np.nan
                 self.J_fit.set_data(np.nan,np.nan)
                 self.J_lims = np.array([])
                 self.J_vertical_line1.set_xdata(np.nan)
                 self.J_vertical_line2.set_xdata(np.nan)
                 plt.draw()
-                self.box_J_peak.set_val("%.2f" % self.J_peak)         
-        
-        
+                self.box_J_peak.set_val("%.2f" % self.J_peak)
+                self.box_J_median.set_val("%.2f" % self.J_median)
 
     def __logi(self,x,L,x0,k):
         return L * (1 + np.exp(-k*(x-x0)))**(-1) 
@@ -1014,7 +1028,7 @@ class NpfEventAnalyzer:
                 self.CoagS[i] = np.nansum(KO*big_N[i,:]*1e6)
 
 
-    def __calc_J(self):
+    def calc_J(self):
         """ Calculate J """
         
         if np.isnan(self.gr):
@@ -1042,7 +1056,7 @@ class NpfEventAnalyzer:
         self.ax2.set_ylim((np.nanmin(np.append(self.J,0)),np.nanmax(np.append(self.J,self.J_peak))))
         plt.draw()
         
-    def __calc_ion_J(self):
+    def calc_ion_J(self):
         """ Calculate J for ion polarity 1"""
         
         if np.isnan(self.gr):
@@ -1102,6 +1116,7 @@ class NpfEventAnalyzer:
         self.mmd_dp_sr = np.array([])
         
         self.J_peak = \
+        self.J_median = \
         self.gr = np.nan
 
         self.mmd_plot_sr.set_data(np.nan,np.nan)
@@ -1115,6 +1130,7 @@ class NpfEventAnalyzer:
         
         self.box_gr.set_val("%.2f" % self.gr)
         self.box_J_peak.set_val("%.2f" % self.J_peak)
+        self.box_J_median.set_val("%.2f" % self.J_median)
 
     def __clear_all(self,event):
         """ Clear polygons and average mode diameters """
@@ -1130,6 +1146,7 @@ class NpfEventAnalyzer:
         
         # Initialize all np.nan variables
         self.J_peak = \
+        self.J_median = \
         self.gr = np.nan
         
         # Clears polygon used to outline particle mode
@@ -1142,6 +1159,7 @@ class NpfEventAnalyzer:
         
         self.box_gr.set_val("%.2f" % self.gr)
         self.box_J_peak.set_val("%.2f" % self.J_peak)
+        self.box_J_median.set_val("%.2f" % self.J_median)
         
         # clear average mode diameters and fit
         self.mmd_plot.set_data(np.nan,np.nan)

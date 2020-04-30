@@ -11,7 +11,6 @@ Nat Protoc 7, 1651–1667 (2012).
 https://doi.org/10.1038/nprot.2012.091
 
 =====================
-
 Instructions to get started (assuming you have Anaconda installed):
 
 $ git clone https://github.com/jlpl/npf-event-analyzer.git
@@ -92,5 +91,6 @@ $ touch analyze_particles_example.py
     eva.analyze_par(particle_data, temp = 273.15, pres = 101325.0)
 
 $ python analyze_particles_example.py
+
 
 
