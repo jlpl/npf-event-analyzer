@@ -9,6 +9,8 @@ from matplotlib.widgets import Slider, Button, TextBox
 import itertools
 import pandas as pd
 from scipy.optimize import curve_fit
+import matplotlib.gridspec as gridspec
+
 
 plt.ion()
 
@@ -33,9 +35,9 @@ class NpfEventAnalyzer:
         time_resolution: is the desired time resolution in days for the result, e.g. 1/1440. = 1 min (default)
 
         result is a list where
-        result[0]: unified time vector 1-d array
-        result[1]: unified diameter vector 1-d array
-        result[2]: unified data matrix 2-d array
+        result[0]: combined time vector 1-d array
+        result[1]: combined diameter vector 1-d array
+        result[2]: combined data matrix 2-d array
 
         """
         
@@ -142,7 +144,8 @@ class NpfEventAnalyzer:
         self.__init_sliders()
         self.__init_buttons()
         self.__init_textboxes()
-        
+
+
         plt.show()
 
     def __init_par_fig(self):
@@ -150,15 +153,20 @@ class NpfEventAnalyzer:
         # Figure and axes
         self.fig = plt.figure(figsize=(25,18))
         self.fig.subplots_adjust(left=0.1, bottom=0.25)
+      
+        self.gs = self.fig.add_gridspec(3,2) 
+        self.ax1 = self.fig.add_subplot(self.gs[:,0]) # number-size distribution
+        self.ax2 = self.fig.add_subplot(self.gs[0,1]) # formation rate
+        self.ax3 = self.fig.add_subplot(self.gs[1,1]) # CoagS-term
+        self.ax4 = self.fig.add_subplot(self.gs[2,1]) # GR-term
 
-        self.ax1 = self.fig.add_subplot(121) # number-size distribution
-        self.ax2 = self.fig.add_subplot(122) # formation rate
-        
-        self.ax1.set_ylabel("Diameter, [nm]")
+        self.ax1.set_ylabel("$d_p$, [nm]")
         self.ax1.set_xlabel("Time, [days]")
-        self.ax2.set_xlabel("Time, [days]")
-        self.ax2.set_ylabel("Formation rate, [cm-3 s-1]")
-        
+        self.ax2.set_ylabel("$J$, [cm-3 s-1]")
+        self.ax3.set_ylabel("$CoagS \\times N$, [cm-3 s-1]")
+        self.ax4.set_xlabel("Time, [days]")
+        self.ax4.set_ylabel("GR/$\Delta d_p \\times N$, [cm-3 s-1]")
+ 
         # Smoothing and color limits
         self.smooth = [0,0]
         self.clim = [1e1,1e5]
@@ -188,19 +196,24 @@ class NpfEventAnalyzer:
         self.ax1.autoscale(tight='true')
         
     def __init_ion_fig(self):
-        
-        # Figure window and axes
-        self.fig = plt.figure(figsize=(20,12))
+
+        # Figure and axes
+        self.fig = plt.figure(figsize=(25,18))
         self.fig.subplots_adjust(left=0.1, bottom=0.25)
-   
-        self.ax1 = self.fig.add_subplot(121) # number-size distribution
-        self.ax2 = self.fig.add_subplot(122) # formation rate
-        
-        self.ax1.set_ylabel("Diameter, [nm]")
+      
+        self.gs = self.fig.add_gridspec(3,2) 
+        self.ax1 = self.fig.add_subplot(self.gs[:,0]) # number-size distribution
+        self.ax2 = self.fig.add_subplot(self.gs[0,1]) # formation rate
+        self.ax3 = self.fig.add_subplot(self.gs[1,1]) # CoagS-term
+        self.ax4 = self.fig.add_subplot(self.gs[2,1]) # GR-term
+
+        self.ax1.set_ylabel("$d_p$, [nm]")
         self.ax1.set_xlabel("Time, [days]")
-        self.ax2.set_xlabel("Time, [days]")
-        self.ax2.set_ylabel("Formation rate, [cm-3 s-1]")
-        
+        self.ax2.set_ylabel("$J$, [cm-3 s-1]")
+        self.ax3.set_ylabel("$CoagS \\times N$, [cm-3 s-1]")
+        self.ax4.set_xlabel("Time, [days]")
+        self.ax4.set_ylabel("GR/$\Delta d_p \\times N$, [cm-3 s-1]")
+      
         # Smoothing and color limits
         self.smooth = [0,0]
         self.clim = [1e1,1e4]
@@ -274,6 +287,8 @@ class NpfEventAnalyzer:
           
     def __init_variables(self):
         self.CoagS = \
+        self.CoagS_term = \
+        self.GR_term = \
         self.J_time = \
         self.J = \
         self.J_lims = \
@@ -283,6 +298,7 @@ class NpfEventAnalyzer:
         self.mmd_dp_sr = np.array([])
         self.J_peak = \
         self.J_median = \
+        self.J_halfmax = \
         self.gr = np.nan
         
     def __init_polygons(self):
@@ -300,9 +316,12 @@ class NpfEventAnalyzer:
         self.mmd_plot_sr = self.ax1.plot(np.nan,np.nan,'mo',zorder=6000)[0]
         self.mmd_fit_sr = self.ax1.plot(np.nan,np.nan,'k-',zorder=8000)[0]
         self.J_plot = self.ax2.plot(np.nan,np.nan,'b-',zorder=5)[0]
+        self.gr_term_plot = self.ax4.plot(np.nan,np.nan,'b-',zorder=5)[0]
+        self.coags_term_plot = self.ax3.plot(np.nan,np.nan,'b-',zorder=5)[0]
         self.J_fit = self.ax2.plot(np.nan,np.nan,'k-',zorder=10)[0]
         
     def __init_sliders(self):
+        # Only act on the size-distribution plot properties
         self.color_axmin = self.fig.add_axes([0.1, 0.07, 0.05, 0.02])
         self.color_axmax = self.fig.add_axes([0.1, 0.1, 0.05, 0.02])
         self.smooth_axmin = self.fig.add_axes([0.1, 0.01, 0.05, 0.02])
@@ -330,7 +349,7 @@ class NpfEventAnalyzer:
         self.reso_s.label.set_fontweight("bold")
         self.reso_s.on_changed(self.__update_reso)
         
-        # Do the size range selection using slidesr instead of text boxes
+        # Do the size range selection using sliders instead of text boxes where you type
         self.dp_axmin = self.fig.add_axes([0.5, 0.01, 0.2, 0.03])
         self.dp_axmax = self.fig.add_axes([0.5, 0.05, 0.2, 0.03])
         self.dp_smin = Slider(self.dp_axmin,'dp min',1,50,valinit=self.dp_lim[0],valstep=0.5)
@@ -429,18 +448,28 @@ class NpfEventAnalyzer:
         self.box_J_median = TextBox(self.box_J_median_ax,'J median (cm-3 s-1)',initial = "%.2f" % self.J_median)
         self.box_J_median.label.set_fontsize(self.fontsizes)
         self.box_J_median.label.set_fontweight("bold")
-                      
-        
+
+        self.box_J_halfmax_ax = self.fig.add_axes([0.9, 0.1, 0.05, 0.02])
+        self.box_J_halfmax = TextBox(self.box_J_halfmax_ax,'J halfmax (cm-3 s-1)',initial = "%.2f" % self.J_halfmax)
+        self.box_J_halfmax.label.set_fontsize(self.fontsizes)
+        self.box_J_halfmax.label.set_fontweight("bold")
+
     def __update_color(self,val):
         self.clim = [10**self.color_smin.val,10**self.color_smax.val]
         self.pcplot.set_clim(self.clim)
         self.fig.canvas.draw()
         
     def __update_dp(self,val):
+        # When the sliders are moved:
+        # - Set the new diameter limits
+        # - Re-initialize J fit, since the old one is obsolete now
+        # - Calculate GR for the new diameter limits
+        # - Calculate new J
         self.dp_lim = [self.dp_smin.val,self.dp_smax.val]
-        self.J_bound_counter=0
+        self.J_bound_counter = 0
         self.J_peak = np.nan
         self.J_median = np.nan
+        self.J_halfmax = np.nan
         self.J_fit.set_data(np.nan,np.nan)
         self.J_lims = np.array([])
         self.J_vertical_line1.set_xdata(np.nan)
@@ -448,6 +477,7 @@ class NpfEventAnalyzer:
         plt.draw()
         self.box_J_peak.set_val("%.2f" % self.J_peak)
         self.box_J_median.set_val("%.2f" % self.J_median)
+        self.box_J_halfmax.set_val("%.2f" % self.J_halfmax)
         self.__calc_gr()
         if self.particle_mode:
             self.calc_J()
@@ -598,13 +628,15 @@ class NpfEventAnalyzer:
             self.J_bound_counter=0
             self.J_peak = np.nan
             self.J_median = np.nan
+            self.J_halfmax = np.nan
             self.J_fit.set_data(np.nan,np.nan)
             self.J_lims = np.array([])
             self.J_vertical_line1.set_xdata(np.nan)
             self.J_vertical_line2.set_xdata(np.nan)
             plt.draw()
             self.box_J_peak.set_val("%.2f" % self.J_peak) 
-            self.box_J_median.set_val("%.2f" % self.J_median) 
+            self.box_J_median.set_val("%.2f" % self.J_median)
+            self.box_J_halfmax.set_val("%.2f" % self.J_halfmax)
             self.cid_fit_J = self.fig.canvas.mpl_connect('button_press_event',self.__fit_J)
         elif button_color=='white':
             self.fig.canvas.mpl_disconnect(self.cid_fit_J)
@@ -636,6 +668,9 @@ class NpfEventAnalyzer:
     
                         # Amplitude of the peak is J
                         self.J_peak = params[0]
+
+                        # Half maximum
+                        self.J_halfmax = params[0]/2.
                        
                         # Plot the fit for visual verification
                         fit = self.__gaus(self.J_time,params[0],params[1],params[2])
@@ -652,6 +687,7 @@ class NpfEventAnalyzer:
                 plt.draw()
                 self.box_J_peak.set_val("%.2f" % self.J_peak) 
                 self.box_J_median.set_val("%.2f" % self.J_median) 
+                self.box_J_halfmax.set_val("%.2f" % self.J_halfmax)
                 
             if event.button==3:
                 self.J_bound_counter=0
@@ -937,7 +973,7 @@ class NpfEventAnalyzer:
                              (self.mmd_dp<=self.dp_lim[1])).flatten()
 
         if len(findex)<=1:
-            print ("Less than or equal to one point")
+            print ("Less than two points in the given size range!")
             return
 
         self.mmd_time_sr = self.mmd_time[findex]
@@ -1044,16 +1080,28 @@ class NpfEventAnalyzer:
         dNdt = np.diff(N)/np.diff(time) # derivative cm-3 s-1
         mid_N = (N[1:] + N[:-1])/2.0
         mid_CoagS = (self.CoagS[1:] + self.CoagS[:-1])/2.0
-        mid_J = dNdt + mid_CoagS * mid_N + GR/(dp2-dp1) * mid_N
 
         self.J_time = mid_time
-        self.J = mid_J
+        self.CoagS = mid_CoagS
+        self.CoagS_term = mid_CoagS * mid_N
+        self.GR_term = GR/(dp2-dp1) * mid_N
+        self.J = dNdt + self.CoagS_term + self.GR_term
 
         self.J_plot.set_data(self.J_time,self.J)
-        self.ax2.autoscale(tight=1)
+
+        self.coags_term_plot.set_data(self.J_time,self.CoagS_term)
+
+        self.gr_term_plot.set_data(self.J_time,self.GR_term)
 
         self.ax2.set_xlim((self.J_time.min(),self.J_time.max()))
         self.ax2.set_ylim((np.nanmin(np.append(self.J,0)),np.nanmax(np.append(self.J,self.J_peak))))
+       
+        self.ax4.set_xlim((self.J_time.min(),self.J_time.max()))
+        self.ax4.set_ylim((np.nanmin(np.append(self.GR_term,0)),np.nanmax(self.GR_term)))
+        
+        self.ax3.set_xlim((self.J_time.min(),self.J_time.max()))
+        self.ax3.set_ylim((np.nanmin(np.append(self.CoagS_term,0)),np.nanmax(self.CoagS_term)))
+
         plt.draw()
         
     def calc_ion_J(self):
@@ -1095,20 +1143,37 @@ class NpfEventAnalyzer:
                 + alpha * ion1_mid_N * ion2_mid_lessN\
                 - Xi * par_mid_N * ion1_mid_lessN 
 
+                
         self.J_time = mid_time
         self.J = mid_J
+        self.CoagS = mid_CoagS
+        self.CoagS_term = mid_CoagS * ion1_mid_N
+        self.GR_term = GR/(dp2-dp1) * ion1_mid_N
 
         self.J_plot.set_data(self.J_time,self.J)
+
+        self.coags_term_plot.set_data(self.J_time,self.CoagS_term)
+
+        self.gr_term_plot.set_data(self.J_time,self.GR_term)
+
         self.ax2.set_xlim((self.J_time.min(),self.J_time.max()))
         self.ax2.set_ylim((np.nanmin(np.append(self.J,0)),np.nanmax(np.append(self.J,self.J_peak))))
-        plt.draw()
+       
+        self.ax4.set_xlim((self.J_time.min(),self.J_time.max()))
+        self.ax4.set_ylim((np.nanmin(np.append(self.GR_term,0)),np.nanmax(self.GR_term)))
         
+        self.ax3.set_xlim((self.J_time.min(),self.J_time.max()))
+        self.ax3.set_ylim((np.nanmin(np.append(self.CoagS_term,0)),np.nanmax(self.CoagS_term)))
+
+        plt.draw()
         
 
     def __clear_sr(self,event):
         """ Clear points in the size-range and the fit to them """
         
         self.CoagS = \
+        self.CoagS_term = \
+        self.GR_term = \
         self.J_time = \
         self.J = \
         self.J_lims = \
@@ -1116,12 +1181,15 @@ class NpfEventAnalyzer:
         self.mmd_dp_sr = np.array([])
         
         self.J_peak = \
+        self.J_halfmax = \
         self.J_median = \
         self.gr = np.nan
 
         self.mmd_plot_sr.set_data(np.nan,np.nan)
         self.mmd_fit_sr.set_data(np.nan,np.nan)
         self.J_plot.set_data(np.nan,np.nan)
+        self.gr_term_plot.set_data(np.nan,np.nan)
+        self.coags_term_plot.set_data(np.nan,np.nan)
         self.J_fit.set_data(np.nan,np.nan)
         self.J_vertical_line1.set_xdata(np.nan)
         self.J_vertical_line2.set_xdata(np.nan)
@@ -1131,11 +1199,14 @@ class NpfEventAnalyzer:
         self.box_gr.set_val("%.2f" % self.gr)
         self.box_J_peak.set_val("%.2f" % self.J_peak)
         self.box_J_median.set_val("%.2f" % self.J_median)
+        self.box_J_halfmax.set_val("%.2f" % self.J_halfmax)
 
     def __clear_all(self,event):
         """ Clear polygons and average mode diameters """
         
         self.CoagS = \
+        self.CoagS_term = \
+        self.GR_term = \
         self.J_time = \
         self.J = \
         self.J_lims = \
@@ -1146,6 +1217,7 @@ class NpfEventAnalyzer:
         
         # Initialize all np.nan variables
         self.J_peak = \
+        self.J_halfmax = \
         self.J_median = \
         self.gr = np.nan
         
@@ -1160,7 +1232,8 @@ class NpfEventAnalyzer:
         self.box_gr.set_val("%.2f" % self.gr)
         self.box_J_peak.set_val("%.2f" % self.J_peak)
         self.box_J_median.set_val("%.2f" % self.J_median)
-        
+        self.box_J_halfmax.set_val("%.2f" % self.J_halfmax)
+
         # clear average mode diameters and fit
         self.mmd_plot.set_data(np.nan,np.nan)
         self.mmd_plot_sr.set_data(np.nan,np.nan)
@@ -1169,6 +1242,9 @@ class NpfEventAnalyzer:
         self.J_fit.set_data(np.nan,np.nan)
         self.J_vertical_line1.set_xdata(np.nan)
         self.J_vertical_line2.set_xdata(np.nan)
+        self.gr_term_plot.set_data(np.nan,np.nan)
+        self.coags_term_plot.set_data(np.nan,np.nan)
+
         plt.draw()
 
 
