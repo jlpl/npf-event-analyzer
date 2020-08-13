@@ -12,39 +12,62 @@ from scipy.optimize import curve_fit
 import matplotlib.gridspec as gridspec
 
 
-plt.ion()
-
 class NpfEventAnalyzer:
     
     def __init__(self):
         self.fontsizes = 8
+        plt.ion()
         return
 
-    def combine_sizedist(self, times, diams, datas, time_resolution=1/1440.):
+    def combine_sizedist(self, times, diams, datas, diam_ranges, time_resolution=1/1440.):
         """ A utility function to combine number-size distributions 
 
         result = EventAnalyzer.combine_sizedist([time_vector_dist_1, time_vector_dist_2, ..., time_vector_dist_n],
                                                 [diam_vector_dist_1, diam_vector_dist_2, ..., diam_vector_dist_n],
                                                 [data_matrix_dist_1, data_matrix_dist_2, ..., data_matrix_dist_n],
+                                                [diam_range_1, diam_range_2, ..., diam_range_n],
                                                 time_resolution = 5/1440.)
 
         where for the dist_i
         time_vector_dist_i: 1-D array with length n and unit of days
-        diam_vector_dist_i: 1-D arrays with length m and unit of nm
-        data_matrix_dist_i: 2-D array with n rows and m columns containing the dNdlogDp in units of cm-3
+        diam_vector_dist_i: 1-D arrays with length m
+        data_matrix_dist_i: 2-D array with n rows and m columns containing the aerosol size distribution data
+        diam_range_i: pair of values giving the lower and upper limit for diameter
         time_resolution: is the desired time resolution in days for the result, e.g. 1/1440. = 1 min (default)
 
         result is a list where
-        result[0]: combined time vector 1-d array
+        result[0]: combined time vector 1-d array, unit: days 
         result[1]: combined diameter vector 1-d array
         result[2]: combined data matrix 2-d array
 
         """
         
+        # Find start and end times
+        for i in range(0, len(times)):
+            if (i==0):
+                mintime = np.min(times[i])
+                maxtime = np.max(times[i])
+            else:
+                mintime = np.min([mintime,np.min(times[i])])
+                maxtime = np.min([maxtime,np.max(times[i])])
+
+        # Combine the distributions
         dfs = []
         for i in range(0, len(times)):
-            df = pd.DataFrame(columns = diams[i], index = times[i] - np.floor(times[i]), data = datas[i])
-            df = df.reindex(np.arange(0,1,time_resolution),method='nearest')
+            
+            # Find the diameter range of the ith distribution
+            findex = np.argwhere((diams[i]>=diam_ranges[i][0]) & (diams[i]<=diam_ranges[i][1])).flatten()
+  
+            my_times = np.arange(mintime,maxtime,time_resolution)
+            my_diams = diams[i][findex]
+            my_datas = datas[i][:,findex]
+
+            df = pd.DataFrame(columns = my_diams, index = times[i], data = my_datas)
+
+            df = df.reindex(my_times,method='nearest')
+            #self.ion2_df = self.ion2_df.reindex(self.time_axis,method='nearest')
+            
+            # Change the time resolution
             dfs.append(df)
             
         sizedist = pd.concat(dfs,axis=1).sort_index(axis=1)
@@ -156,28 +179,30 @@ class NpfEventAnalyzer:
       
         self.gs = self.fig.add_gridspec(3,2) 
         self.ax1 = self.fig.add_subplot(self.gs[:,0]) # number-size distribution
-        self.ax2 = self.fig.add_subplot(self.gs[0,1]) # formation rate
-        self.ax3 = self.fig.add_subplot(self.gs[1,1]) # CoagS-term
-        self.ax4 = self.fig.add_subplot(self.gs[2,1]) # GR-term
+        self.ax2 = self.fig.add_subplot(self.gs[:,1]) # formation rate
+        #self.ax3 = self.fig.add_subplot(self.gs[1,1]) # CoagS-term
+        #self.ax4 = self.fig.add_subplot(self.gs[2,1]) # GR-term
 
         self.ax1.set_ylabel("$d_p$, [nm]")
         self.ax1.set_xlabel("Time, [days]")
-        self.ax2.set_ylabel("$J$, [cm-3 s-1]")
-        self.ax3.set_ylabel("$CoagS \\times N$, [cm-3 s-1]")
-        self.ax4.set_xlabel("Time, [days]")
-        self.ax4.set_ylabel("GR/$\Delta d_p \\times N$, [cm-3 s-1]")
+        self.ax2.set_ylabel("[cm-3 s-1]")
+        #self.ax3.set_ylabel("$CoagS \\times N$, [cm-3 s-1]")
+        self.ax2.set_xlabel("Time, [days]")
+        #self.ax4.set_ylabel("GR/$\Delta d_p \\times N$, [cm-3 s-1]")
  
         # Smoothing and color limits
         self.smooth = [0,0]
         self.clim = [1e1,1e5]
         self.dp_lim = [3,6]
         self.time_resolution = 1/1440.0
-        
-        # define time axis
-        self.time_axis = np.arange(self.par[0][0] - np.floor(self.par[0][0]),self.par[0][-1] - np.floor(self.par[0][-1]), self.time_resolution)
+
+        # time limits
+        self.mintime = self.par[0][0]
+        self.maxtime = self.par[0][-1]
+        self.time_axis = np.arange(self.mintime,self.maxtime,self.time_resolution)
         
         # Process the particle data
-        self.par_df = pd.DataFrame(columns=self.par[1],index=self.par[0]-np.floor(self.par[0]),data=self.par[2])
+        self.par_df = pd.DataFrame(columns=self.par[1],index=self.par[0],data=self.par[2])
         self.par_df = self.par_df.reindex(self.time_axis,method='nearest')
         self.par_time = self.par_df.index.values
         self.par_diam = self.par_df.columns.values
@@ -203,42 +228,45 @@ class NpfEventAnalyzer:
       
         self.gs = self.fig.add_gridspec(3,2) 
         self.ax1 = self.fig.add_subplot(self.gs[:,0]) # number-size distribution
-        self.ax2 = self.fig.add_subplot(self.gs[0,1]) # formation rate
-        self.ax3 = self.fig.add_subplot(self.gs[1,1]) # CoagS-term
-        self.ax4 = self.fig.add_subplot(self.gs[2,1]) # GR-term
+        self.ax2 = self.fig.add_subplot(self.gs[:,1]) # formation rate
+        #self.ax3 = self.fig.add_subplot(self.gs[1,1]) # CoagS-term
+        #self.ax4 = self.fig.add_subplot(self.gs[2,1]) # GR-term
 
         self.ax1.set_ylabel("$d_p$, [nm]")
         self.ax1.set_xlabel("Time, [days]")
-        self.ax2.set_ylabel("$J$, [cm-3 s-1]")
-        self.ax3.set_ylabel("$CoagS \\times N$, [cm-3 s-1]")
-        self.ax4.set_xlabel("Time, [days]")
-        self.ax4.set_ylabel("GR/$\Delta d_p \\times N$, [cm-3 s-1]")
-      
+        self.ax2.set_ylabel("[cm-3 s-1]")
+        #self.ax3.set_ylabel("$CoagS \\times N$, [cm-3 s-1]")
+        self.ax2.set_xlabel("Time, [days]")
+        #self.ax4.set_ylabel("GR/$\Delta d_p \\times N$, [cm-3 s-1]")
+
+        # TODO set up plots for ion processes
+
         # Smoothing and color limits
         self.smooth = [0,0]
         self.clim = [1e1,1e4]
         self.dp_lim = [3,6]
         self.time_resolution = 1/1440.0
         
-        # define time axis
-        self.time_axis = np.arange(self.ion1[0][0]-np.floor(self.ion1[0][0]), self.ion1[0][-1]-np.floor(self.ion1[0][-1]), self.time_resolution)
+        self.mintime = self.ion1[0][0]
+        self.maxtime = self.ion1[0][-1]
+        self.time_axis = np.arange(self.mintime,self.maxtime,self.time_resolution)
         
         # Extract particle data
-        self.par_df = pd.DataFrame(columns=self.par[1],index=self.par[0]-np.floor(self.par[0]),data=self.par[2])
+        self.par_df = pd.DataFrame(columns=self.par[1],index=self.par[0],data=self.par[2])
         self.par_df = self.par_df.reindex(self.time_axis,method='nearest')
         self.par_time = self.par_df.index.values
         self.par_diam = self.par_df.columns.values
         self.par_data = self.par_df.values
 
         # the main ion data
-        self.ion1_df = pd.DataFrame(columns=self.ion1[1],index=self.ion1[0]-np.floor(self.ion1[0]),data=self.ion1[2])
+        self.ion1_df = pd.DataFrame(columns=self.ion1[1],index=self.ion1[0],data=self.ion1[2])
         self.ion1_df = self.ion1_df.reindex(self.time_axis,method='nearest')
         self.ion1_time = self.ion1_df.index.values
         self.ion1_diam = self.ion1_df.columns.values
-        self.ion1_data = self.ion1_df.values    
+        self.ion1_data = self.ion1_df.values
 
         # auxiliary ion data
-        self.ion2_df = pd.DataFrame(columns=self.ion2[1],index=self.ion2[0]-np.floor(self.ion2[0]),data=self.ion2[2])
+        self.ion2_df = pd.DataFrame(columns=self.ion2[1],index=self.ion2[0],data=self.ion2[2])
         self.ion2_df = self.ion2_df.reindex(self.time_axis,method='nearest')
         self.ion2_time = self.ion2_df.index.values
         self.ion2_diam = self.ion2_df.columns.values
@@ -265,23 +293,21 @@ class NpfEventAnalyzer:
         if isinstance(self.temp, float):
             self.temp_time = self.time_axis
             self.temp_data = self.temp*np.ones((len(self.temp_time),1))
+
         # Temperature time series
         else:
-            self.temp_val = self.temp[1]
-            self.temp_tim = self.temp[0] - np.floor(self.temp[0])
-            self.temp_df = pd.DataFrame(index=self.temp_tim, data=self.temp_val)
+            self.temp_df = pd.DataFrame(index=self.temp[0], data=self.temp[1])
             self.temp_df = self.temp_df.reindex(self.time_axis,method='nearest')
             self.temp_data = self.temp_df.index.values
             self.temp_time = self.temp_df.values
-            
+        
+        # Pressure
         if isinstance(self.pres, float):
             self.pres_time = self.time_axis
             self.pres_data = self.pres*np.ones((len(self.pres_time),1))
         else:
-            self.pres_val = self.pres[1]
-            self.pres_tim = self.pres[0] - np.floor(self.pres[0]) 
-            self.pres_df = pd.DataFrame(index=self.pres_tim, data=self.pres_val)
-            self.pres_df = self.pres_df.reindex(self.time_axis,method='nearest')
+            self.pres_df = pd.DataFrame(index=self.pres[0], data=self.pres[1])
+            self.temp_df = self.temp_df.reindex(self.time_axis,method='nearest')
             self.pres_data = self.pres_df.index.values
             self.pres_time = self.pres_df.values
           
@@ -289,6 +315,7 @@ class NpfEventAnalyzer:
         self.CoagS = \
         self.CoagS_term = \
         self.GR_term = \
+        self.dNdt_term = \
         self.J_time = \
         self.J = \
         self.J_lims = \
@@ -299,8 +326,8 @@ class NpfEventAnalyzer:
         self.J_peak = \
         self.J_median = \
         self.J_halfmax = \
-        self.gr = np.nan
-        
+        self.gr = np.nan        
+
     def __init_polygons(self):
         self.polyx = \
         self.polyy = \
@@ -315,10 +342,15 @@ class NpfEventAnalyzer:
         self.mmd_plot = self.ax1.plot(np.nan,np.nan,'ko',zorder=5000)[0]
         self.mmd_plot_sr = self.ax1.plot(np.nan,np.nan,'mo',zorder=6000)[0]
         self.mmd_fit_sr = self.ax1.plot(np.nan,np.nan,'k-',zorder=8000)[0]
-        self.J_plot = self.ax2.plot(np.nan,np.nan,'b-',zorder=5)[0]
-        self.gr_term_plot = self.ax4.plot(np.nan,np.nan,'b-',zorder=5)[0]
-        self.coags_term_plot = self.ax3.plot(np.nan,np.nan,'b-',zorder=5)[0]
-        self.J_fit = self.ax2.plot(np.nan,np.nan,'k-',zorder=10)[0]
+        self.J_plot = self.ax2.plot(np.nan,np.nan,'b-',zorder=5, label="J", lw=3)[0]
+        self.gr_term_plot = self.ax2.plot(np.nan,np.nan,'r-',zorder=4, label="GR term", lw=1)[0]
+        self.coags_term_plot = self.ax2.plot(np.nan,np.nan,'g-',zorder=3, label="CoagS term",lw=1)[0]
+        self.dNdt_term_plot = self.ax2.plot(np.nan,np.nan,color='orange',zorder=2, label="dN/dt term",lw=1)[0]
+        self.J_fit = self.ax2.plot(np.nan,np.nan,'k-',zorder=10,lw=3)[0]
+
+        # init legend
+        self.ax2legend = self.ax2.legend(loc=1,fontsize=6)
+        self.ax2legend.set_visible(False)
         
     def __init_sliders(self):
         # Only act on the size-distribution plot properties
@@ -400,13 +432,6 @@ class NpfEventAnalyzer:
         self.appearance_fit_button.label.set_fontweight("bold")
         self.appearance_fit_button.on_clicked(self.__calc_mmd_edge1) 
 
-        # Upper edge
-        self.upper_fit_button_ax = self.fig.add_axes([0.35, 0.1, 0.1, 0.02])
-        self.upper_fit_button = Button(self.upper_fit_button_ax,'upper edge',color="white")
-        self.upper_fit_button.label.set_fontsize(self.fontsizes)
-        self.upper_fit_button.label.set_fontweight("bold")
-        self.upper_fit_button.on_clicked(self.__calc_mmd_edge2) 
-
         # Particle formation rate / Ion formation rate
         self.fit_J_button_ax = self.fig.add_axes([0.21, 0.07, 0.1, 0.02])
         self.fit_J_button = Button(self.fit_J_button_ax, 'fit J', color="white")
@@ -424,13 +449,6 @@ class NpfEventAnalyzer:
         self.clear_all_button.label.set_fontsize(self.fontsizes)
         self.clear_all_button.label.set_fontweight("bold")
         self.clear_all_button.on_clicked(self.__clear_all)
-
-        # Clear the size range
-        self.clear_sr_button_ax = self.fig.add_axes([0.21, 0.13, 0.1, 0.02])
-        self.clear_sr_button = Button(self.clear_sr_button_ax, 'clear size-range',color="white")
-        self.clear_sr_button.label.set_fontsize(self.fontsizes)
-        self.clear_sr_button.label.set_fontweight("bold")
-        self.clear_sr_button.on_clicked(self.__clear_sr)
         
     def __init_textboxes(self):
 
@@ -460,24 +478,9 @@ class NpfEventAnalyzer:
         self.fig.canvas.draw()
         
     def __update_dp(self,val):
-        # When the sliders are moved:
-        # - Set the new diameter limits
-        # - Re-initialize J fit, since the old one is obsolete now
-        # - Calculate GR for the new diameter limits
-        # - Calculate new J
-        self.dp_lim = [self.dp_smin.val,self.dp_smax.val]
-        self.J_bound_counter = 0
-        self.J_peak = np.nan
-        self.J_median = np.nan
-        self.J_halfmax = np.nan
-        self.J_fit.set_data(np.nan,np.nan)
-        self.J_lims = np.array([])
-        self.J_vertical_line1.set_xdata(np.nan)
-        self.J_vertical_line2.set_xdata(np.nan)
-        plt.draw()
-        self.box_J_peak.set_val("%.2f" % self.J_peak)
-        self.box_J_median.set_val("%.2f" % self.J_median)
-        self.box_J_halfmax.set_val("%.2f" % self.J_halfmax)
+        self.dp_lim = [self.dp_smin.val,self.dp_smax.val] # set new size range limits
+        self.__clear_sr() # clear data from the size range
+        # calculate gr and J
         self.__calc_gr()
         if self.particle_mode:
             self.calc_J()
@@ -486,7 +489,8 @@ class NpfEventAnalyzer:
         
     def __update_smooth(self,val):
         self.smooth = [self.smooth_smin.val,self.smooth_smax.val]
-        
+        self.__clear_all(1)
+
         if self.particle_mode:
             self.smoothed_par_data = gaussian_filter(self.par_data,self.smooth,mode='constant')
             self.pcplot.set_array(self.smoothed_par_data[:-1,:-1].ravel())
@@ -501,11 +505,12 @@ class NpfEventAnalyzer:
     def __update_reso(self,val):
         
         self.time_resolution = self.reso_s.val/1440.
-        
+        self.time_axis = np.arange(self.mintime,self.maxtime,self.time_resolution)
+        self.__clear_all(1)
+
         if self.particle_mode:
-            
-            self.time_axis = np.arange(self.par[0][0] - np.floor(self.par[0][0]),self.par[0][-1] - np.floor(self.par[0][-1]), self.time_resolution)
-            self.par_df = pd.DataFrame(columns=self.par[1],index=self.par[0]-np.floor(self.par[0]),data=self.par[2])
+
+            self.par_df = pd.DataFrame(columns=self.par[1],index=self.par[0],data=self.par[2])
             self.par_df = self.par_df.reindex(self.time_axis,method='nearest')
             self.par_time = self.par_df.index.values
             self.par_diam = self.par_df.columns.values
@@ -528,30 +533,31 @@ class NpfEventAnalyzer:
             
         if self.ion_mode:
             
-            # define time axis
-            self.time_axis = np.arange(self.ion1[0][0]-np.floor(self.ion1[0][0]), self.ion1[0][-1]-np.floor(self.ion1[0][-1]), self.time_resolution)
-            
+            x_par,y_par=self.__bin1d(self.par[0], self.par[2], self.time_resolution, [self.mintime,self.maxtime])
+            x_ion1,y_ion1=self.__bin1d(self.ion1[0], self.ion1[2], self.time_resolution, [self.mintime,self.maxtime])
+            x_ion2,y_ion2=self.__bin1d(self.ion2[0], self.ion2[2], self.time_resolution, [self.mintime,self.maxtime])
+
             # Extract particle data
-            self.par_df = pd.DataFrame(columns=self.par[1],index=self.par[0]-np.floor(self.par[0]),data=self.par[2])
-            self.par_df = self.par_df.reindex(self.time_axis,method='nearest')
+            self.par_df = pd.DataFrame(columns=self.par[1],index=self.par[0],data=self.par[2])
+            self.par_df = self.par_df.reindex(self.time_axis,method='nearest')            
             self.par_time = self.par_df.index.values
             self.par_diam = self.par_df.columns.values
             self.par_data = self.par_df.values
-    
+
             # the main ion data
-            self.ion1_df = pd.DataFrame(columns=self.ion1[1],index=self.ion1[0]-np.floor(self.ion1[0]),data=self.ion1[2])
-            self.ion1_df = self.ion1_df.reindex(self.time_axis,method='nearest')
+            self.ion1_df = pd.DataFrame(columns=self.ion1[1],index=self.ion1[0],data=self.ion1[2])
+            self.ion1_df = self.ion1_df.reindex(self.time_axis,method='nearest')            
             self.ion1_time = self.ion1_df.index.values
             self.ion1_diam = self.ion1_df.columns.values
-            self.ion1_data = self.ion1_df.values    
-    
+            self.ion1_data = self.ion1_df.values
+
             # auxiliary ion data
-            self.ion2_df = pd.DataFrame(columns=self.ion2[1],index=self.ion2[0]-np.floor(self.ion2[0]),data=self.ion2[2])
-            self.ion2_df = self.ion2_df.reindex(self.time_axis,method='nearest')
+            self.ion2_df = pd.DataFrame(columns=self.ion2[1],index=self.ion2[0],data=self.ion2[2])
+            self.ion2_df = self.ion2_df.reindex(self.time_axis,method='nearest')            
             self.ion2_time = self.ion2_df.index.values
             self.ion2_diam = self.ion2_df.columns.values
             self.ion2_data = self.ion2_df.values
-            
+           
             self.smoothed_ion1_data = gaussian_filter(self.ion1_data,self.smooth,mode='constant')
             self.smoothed_ion2_data = gaussian_filter(self.ion2_data,self.smooth,mode='constant')
             self.smoothed_par_data = gaussian_filter(self.par_data,self.smooth,mode='constant')
@@ -576,6 +582,7 @@ class NpfEventAnalyzer:
         elif button_color=='white':
             self.fig.canvas.mpl_disconnect(self.cid_poly)
         self.poly_button.color = button_color
+        self.poly_button.hovercolor = button_color
         
     def __draw_poly(self,event):
         if event.inaxes==self.ax1:
@@ -597,6 +604,7 @@ class NpfEventAnalyzer:
         elif button_color=='white':
             self.fig.canvas.mpl_disconnect(self.cid_poly_out)
         self.poly_out_button.color = button_color
+        self.poly_out_button.hovercolor = button_color
         
     def __draw_poly_out(self,event):
         
@@ -641,7 +649,7 @@ class NpfEventAnalyzer:
         elif button_color=='white':
             self.fig.canvas.mpl_disconnect(self.cid_fit_J)
         self.fit_J_button.color = button_color
-        
+        self.fit_J_button.hovercolor = button_color
 
     def __fit_J(self,event):
         if event.inaxes==self.ax2:                        
@@ -656,9 +664,11 @@ class NpfEventAnalyzer:
                     self.J_vertical_line2.set_xdata(event.xdata)
                     self.J_bound_counter = 2
                     findex = np.argwhere((self.J_time<=self.J_lims.max()) & 
-                                        (self.J_time>=self.J_lims.min()))\
+                                        (self.J_time>=self.J_lims.min()) &
+                                        (np.isnan(self.J)==0) &
+                                        (np.isinf(self.J)==0))\
                                        .flatten()
-                    x = self.J_time[findex]
+                    x = self.J_time[findex] - self.mintime
                     y = self.J[findex]
                     mu = np.nanmean(x)
                     a = np.max(y)
@@ -673,9 +683,12 @@ class NpfEventAnalyzer:
                         self.J_halfmax = params[0]/2.
                        
                         # Plot the fit for visual verification
-                        fit = self.__gaus(self.J_time,params[0],params[1],params[2])
-                        self.J_fit.set_data(self.J_time,fit)
-                        self.ax2.set_ylim(bottom=np.nanmin(np.append(self.J,0)))
+                        fit_time = np.linspace(self.mintime,self.maxtime,1000)
+                        fit = self.__gaus(fit_time,params[0],params[1]+self.mintime,params[2])
+                        self.J_fit.set_data(fit_time,fit)
+
+                        self.ax2.set_ylim((np.nanmin(np.concatenate((self.J,self.CoagS_term,self.GR_term,self.dNdt_term,fit))),
+                                           np.nanmax(np.concatenate((self.J,self.CoagS_term,self.GR_term,fit,self.dNdt_term)))))
     
                     except:
                         print ("Diverges")
@@ -815,7 +828,7 @@ class NpfEventAnalyzer:
         sorted_banana_points = [x[x[:,0].argsort()] for x in pre_sorted_banana_points]
         
         for i in range(0,len(sorted_banana_points)):
-            x = sorted_banana_points[i][:,0]
+            x = sorted_banana_points[i][:,0] - self.mintime
             y = sorted_banana_points[i][:,2]
             a=np.max(y)
             mu=np.mean(x)
@@ -826,7 +839,7 @@ class NpfEventAnalyzer:
                     print ("Peak outside range. Skipping %f" % (sorted_banana_points[i][0,1]))
                 else:
                     self.mmd_dp = np.append(self.mmd_dp,sorted_banana_points[i][0,1])
-                    self.mmd_time = np.append(self.mmd_time,params[1])
+                    self.mmd_time = np.append(self.mmd_time,params[1] + self.mintime)
             except:
                 print ("Diverges. Skipping %f" % (sorted_banana_points[i][0,1]))
 
@@ -879,7 +892,7 @@ class NpfEventAnalyzer:
         sorted_banana_points = [x[x[:,0].argsort()] for x in pre_sorted_banana_points]
         
         for i in range(0,len(sorted_banana_points)):
-            x = sorted_banana_points[i][:,0]
+            x = sorted_banana_points[i][:,0] - self.mintime
             y = sorted_banana_points[i][:,2] - np.min(sorted_banana_points[i][:,2])
             L = np.max(y)
             x0 = np.nanmean(x)
@@ -890,80 +903,13 @@ class NpfEventAnalyzer:
                     print ("Peak outside range. Skipping %f" % (sorted_banana_points[i][0,1]))
                 else:
                     self.mmd_dp = np.append(self.mmd_dp,sorted_banana_points[i][0,1])
-                    self.mmd_time = np.append(self.mmd_time,params[1])
+                    self.mmd_time = np.append(self.mmd_time,params[1]+self.mintime)
             except:
                 print ("Diverges. Skipping %f" % (sorted_banana_points[i][0,1]))
 
         # Plot the result on ax
         self.mmd_plot.set_data(self.mmd_time,self.mmd_dp)
         plt.draw()
-        
-        
-    def __calc_mmd_edge2(self,event):
-        """ Calculate mean mode diameters
-        """
-        
-        # Use smoothed data
-        if self.particle_mode:
-            data = gaussian_filter(self.par_data,self.smooth,mode='constant')
-            dpdp,tt = np.meshgrid(self.par_diam,self.par_time)
-            points = np.concatenate((tt.flatten()[np.newaxis].T,
-                                     dpdp.flatten()[np.newaxis].T,
-                                     data.flatten()[np.newaxis].T),
-                                     axis=1)
-        if self.ion_mode:
-            data = np.log10(gaussian_filter(self.ion1_data,self.smooth,mode='constant'))
-            dpdp,tt = np.meshgrid(self.ion1_diam,self.ion1_time)
-            points = np.concatenate((tt.flatten()[np.newaxis].T,
-                                     dpdp.flatten()[np.newaxis].T,
-                                     data.flatten()[np.newaxis].T),
-                                     axis=1)
-
-        # Transform polygon perimeter to path
-        try:
-            banana_perimeter = Path(np.array(list(zip(self.polyx,self.polyy))))
-        except ValueError:
-            print ("No polygon found")
-            return
-
-        # Eliminate nans and infs from dndlogdp
-        points = np.delete(points,np.argwhere((np.isnan(points[:,2]))|(np.isinf(points[:,2]))),axis=0)
-        banana_points = points[banana_perimeter.contains_points(points[:,[0,1]]),:]
-
-        if len(banana_points)==0:
-            print ("Found no points inside polygon.")
-            return
-        
-        # Grouping the size distribution data points
-        if self.particle_mode:
-            pre_sorted_banana_points = [banana_points[banana_points[:,0]==x,:] for x in self.par_time if x in banana_points[:,0]]
-        if self.ion_mode:
-            pre_sorted_banana_points = [banana_points[banana_points[:,0]==x,:] for x in self.ion1_time if x in banana_points[:,0]]
-            
-        sorted_banana_points = [x[x[:,1].argsort()] for x in pre_sorted_banana_points]
-
-        for i in range(0,len(sorted_banana_points)):
-            x = np.log10(sorted_banana_points[i][:,1])
-            y = sorted_banana_points[i][:,2] - np.min(sorted_banana_points[i][:,2])
-            L = np.max(y)
-            x0 = np.nanmean(x)
-            k = 1
-            try:
-                params,pcov = curve_fit(self.__logi,x,y,p0=[L,x0,k])
-                print(params[1])
-                if ((params[1]>=x.max()) | (params[1]<=x.min())):
-                    print ("Peak outside range. Skipping %f" % (sorted_banana_points[i][0,0]))
-                else:
-                    self.mmd_time = np.append(self.mmd_time,sorted_banana_points[i][0,0])
-                    self.mmd_dp = np.append(self.mmd_dp,10**params[1])
-            except:
-                print ("Diverges. Skipping %f" % (sorted_banana_points[i][0,0]))
-
-        # Plot the result on ax
-        self.mmd_plot.set_data(self.mmd_time,self.mmd_dp)
-        plt.draw()      
-        
-        
         
     def __calc_gr(self):
         """ Calculate GR
@@ -978,6 +924,10 @@ class NpfEventAnalyzer:
 
         self.mmd_time_sr = self.mmd_time[findex]
         self.mmd_dp_sr = self.mmd_dp[findex]
+
+        if (self.dp_lim[0]<np.floor(np.min(self.mmd_dp_sr))):
+            print ("Too small size limit for given data")
+            return
 
         # Fit a line to the chosen points
         params = np.polyfit(self.mmd_time_sr,self.mmd_dp_sr,1)
@@ -1085,6 +1035,7 @@ class NpfEventAnalyzer:
         self.CoagS = mid_CoagS
         self.CoagS_term = mid_CoagS * mid_N
         self.GR_term = GR/(dp2-dp1) * mid_N
+        self.dNdt_term = dNdt
         self.J = dNdt + self.CoagS_term + self.GR_term
 
         self.J_plot.set_data(self.J_time,self.J)
@@ -1093,14 +1044,15 @@ class NpfEventAnalyzer:
 
         self.gr_term_plot.set_data(self.J_time,self.GR_term)
 
+        self.dNdt_term_plot.set_data(self.J_time,self.dNdt_term)
+
+        # Adjust the axis limits
+
         self.ax2.set_xlim((self.J_time.min(),self.J_time.max()))
-        self.ax2.set_ylim((np.nanmin(np.append(self.J,0)),np.nanmax(np.append(self.J,self.J_peak))))
-       
-        self.ax4.set_xlim((self.J_time.min(),self.J_time.max()))
-        self.ax4.set_ylim((np.nanmin(np.append(self.GR_term,0)),np.nanmax(self.GR_term)))
-        
-        self.ax3.set_xlim((self.J_time.min(),self.J_time.max()))
-        self.ax3.set_ylim((np.nanmin(np.append(self.CoagS_term,0)),np.nanmax(self.CoagS_term)))
+        self.ax2.set_ylim((np.nanmin(np.concatenate((self.J,self.CoagS_term,self.GR_term,self.dNdt_term))),np.nanmax(np.concatenate((self.J,self.CoagS_term,self.GR_term,self.dNdt_term)))))
+
+        # Display legend
+        self.ax2legend.set_visible(True)
 
         plt.draw()
         
@@ -1149,6 +1101,7 @@ class NpfEventAnalyzer:
         self.CoagS = mid_CoagS
         self.CoagS_term = mid_CoagS * ion1_mid_N
         self.GR_term = GR/(dp2-dp1) * ion1_mid_N
+        self.dNdt_term = ion1_dNdt
 
         self.J_plot.set_data(self.J_time,self.J)
 
@@ -1156,21 +1109,19 @@ class NpfEventAnalyzer:
 
         self.gr_term_plot.set_data(self.J_time,self.GR_term)
 
+        self.dNdt_term_plot.set_data(self.J_time,self.dNdt_term)
+
+        # Adjust the y-limits
         self.ax2.set_xlim((self.J_time.min(),self.J_time.max()))
-        self.ax2.set_ylim((np.nanmin(np.append(self.J,0)),np.nanmax(np.append(self.J,self.J_peak))))
-       
-        self.ax4.set_xlim((self.J_time.min(),self.J_time.max()))
-        self.ax4.set_ylim((np.nanmin(np.append(self.GR_term,0)),np.nanmax(self.GR_term)))
-        
-        self.ax3.set_xlim((self.J_time.min(),self.J_time.max()))
-        self.ax3.set_ylim((np.nanmin(np.append(self.CoagS_term,0)),np.nanmax(self.CoagS_term)))
+        self.ax2.set_ylim((np.nanmin(np.concatenate((self.J,self.CoagS_term,self.GR_term,self.dNdt_term))),np.nanmax(np.concatenate((self.J,self.CoagS_term,self.GR_term,self.dNdt_term)))))
 
         plt.draw()
         
 
-    def __clear_sr(self,event):
+    def __clear_sr(self):
         """ Clear points in the size-range and the fit to them """
-        
+ 
+        self.J_bound_counter = 0
         self.CoagS = \
         self.CoagS_term = \
         self.GR_term = \
@@ -1190,6 +1141,7 @@ class NpfEventAnalyzer:
         self.J_plot.set_data(np.nan,np.nan)
         self.gr_term_plot.set_data(np.nan,np.nan)
         self.coags_term_plot.set_data(np.nan,np.nan)
+        self.dNdt_term_plot.set_data(np.nan,np.nan)
         self.J_fit.set_data(np.nan,np.nan)
         self.J_vertical_line1.set_xdata(np.nan)
         self.J_vertical_line2.set_xdata(np.nan)
@@ -1244,6 +1196,7 @@ class NpfEventAnalyzer:
         self.J_vertical_line2.set_xdata(np.nan)
         self.gr_term_plot.set_data(np.nan,np.nan)
         self.coags_term_plot.set_data(np.nan,np.nan)
+        self.dNdt_term_plot.set_data(np.nan,np.nan)
 
         plt.draw()
 

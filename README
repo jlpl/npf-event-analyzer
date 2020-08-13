@@ -26,13 +26,12 @@ $ touch analyze_particles_example.py
     from NpfEventAnalyzer import *
     import numpy as np
 
-
     ############################
     # PREPARING THE PSM DATA
-    # psm[1:,0]   time vector (days)
+    # psm[1:,0]   time vector (days since beginning of year)
     # psm[0,:]    limiting diameters for size bins (nm)
     # psm[1:,2:]  unnormalized particle number concentrations in each bin (cm-3)
-    #
+    
     psm = np.loadtxt('/path/to/psm-data.dat')
     psm_time = psm[1:,0]
     psm_diam = np.sqrt(psm[0,1:]*psm[0,:-1])
@@ -41,10 +40,10 @@ $ touch analyze_particles_example.py
 
     ############################
     # PREPARING THE NAIS DATA
-    # nais[1:,0]   time vector (days)
+    # nais[1:,0]   time vector (days since beginning fo year)
     # nais[0,2:]   geometric mean diameters of size bins (m)
     # nais[1:,2:]  normalized particle number concentrations in each bin (cm-3)
-    #
+    
     nais = np.loadtxt('/path/to/nais-data.sum')
     nais_time = nais[1:,0]
     nais_diam = nais[0,2:]*1e9
@@ -53,10 +52,10 @@ $ touch analyze_particles_example.py
 
     ############################
     # PREPARING THE DMPS DATA
-    # dmps[1:,0]   time vector (days)
+    # dmps[1:,0]   time vector (days since beginning of year)
     # dmps[0,2:]   geometric mean diameters of size bins (nm)
     # dmps[1:,2:]  normalized particle number concentrations in each bin (cm-3)
-    #
+    
     dmps = np.loadtxt('/path/to/dmps-data.sum')
     dmps_time = dmps[1:,0]
     dmps_diam = dmps[0,2:]
@@ -64,31 +63,15 @@ $ touch analyze_particles_example.py
 
 
     ############################
-    # EXTRACT NON-OVERLAPPING SIZE-RANGES
-    # PSM: less than 2.5 nm
-    # NAIS: between 2.5 and 20 nm
-    # DMPS: larger than 20 nm
-    #
-    psm_findex = np.argwhere(psm_diam<2.5).flatten()                       
-    nais_findex = np.argwhere((nais_diam>2.5) & (nais_diam<20.0)).flatten()
-    dmps_findex = np.argwhere(dmps_diam>20.0).flatten()                    
-    psm_diam = psm_diam[psm_findex]
-    psm_data = psm_data[:,psm_findex]
-    nais_diam = nais_diam[nais_findex]
-    nais_data = nais_data[:,nais_findex]
-    dmps_diam = dmps_diam[dmps_findex]
-    dmps_data = dmps_data[:,dmps_findex]
-
-
-    ############################
     # RUN THE NPF EVENT ANALYZER
-    #
-    eva = NpfEventAnalyzer()
-    particle_data = eva.combine_sizedist([psm_time,nais_time,dmps_time],
-                                         [psm_diam,nais_diam,dmps_diam],
-                                         [psm_data,nais_data,dmps_data],
-                                         1/1440.)
-    eva.analyze_par(particle_data, temp = 273.15, pres = 101325.0)
+    
+    x = NpfEventAnalyzer()
+    particle_data = x.combine_sizedist([psm_time,nais_time,dmps_time],       # time vectors (doy)
+                                       [psm_diam,nais_diam,dmps_diam],       # diameter vectors (nm)
+                                       [psm_data,nais_data,dmps_data],       # data matrices (cm-3)
+                                       [[1.0,2.5],[2.5,20.0],[20.0,1000.0]], # size limits (nm) 
+                                       time_resolution=1/1440.)              # time resolution = 1 min
+    x.analyze_par(particle_data, temp = 273.15, pres = 101325.0)
 
 $ python analyze_particles_example.py
 
